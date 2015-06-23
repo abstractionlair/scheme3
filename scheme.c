@@ -12,37 +12,16 @@ struct String {
 	size_t size;
 };
 
-struct String string(void)
-{
-	struct String s = {.cstr = 0, .count = 0, .size = 0};
-	return s;
-}
-
 struct StringArray {
 	struct String *strs;
 	size_t count;
 	size_t size;
 };
 
-struct StringArray string_array(void)
-{
-	struct StringArray sa = {.strs = 0, .count = 0, .size = 0};
-	return sa;
-}
-
 /* For circular references */
 typedef struct Object Object;
 typedef struct Pair Pair;
-
-struct Machine {
-	struct StringArray symbols;
-};
-
-struct Machine machine(void)
-{
-	struct Machine m = {.symbols = string_array()};
-	return m;
-}
+typedef struct Env Env;
 
 struct Pair {
 	struct Object *car;
@@ -55,7 +34,20 @@ enum Type {
 	TypeInteger,
 	TypeDouble,
 	TypePair,
+	TypeEnv,
 	TypeError
+};
+
+struct EnvEntry {
+	ptrdiff_t key;
+	struct Object *value;
+};
+
+struct Env {
+	struct EnvEntry *map;
+	size_t count;
+	size_t size;
+	struct Env *parent;
 };
 
 struct Object {
@@ -68,6 +60,85 @@ struct Object {
 		struct Pair pair;
 	};
 };
+
+struct Machine {
+	struct StringArray symbols;
+	struct Env env;
+};
+
+struct String make_string(void)
+{
+	struct String s = {.cstr = 0, .count = 0, .size = 0};
+	return s;
+}
+
+struct StringArray make_string_array(void)
+{
+	struct StringArray sa = {.strs = 0, .count = 0, .size = 0};
+	return sa;
+}
+
+struct Env make_env(void)
+{
+	struct Env e = {.map = 0, .count = 0, .size = 0, .parent = 0};
+	return e;
+}
+
+struct Machine make_machine(void)
+{
+	struct Machine m = {.symbols = make_string_array(), .env = make_env()};
+	return m;
+}
+
+struct Object *env_get(struct Env *env, ptrdiff_t sym)
+{
+	/* NOTE: this one is recursive */
+	while (env) {
+		for (ptrdiff_t i = 0; i != env->count; ++i)
+			if (sym == env->map[i].key)
+				return env->map[i].value;
+		env = env->parent;
+	}
+	return 0;
+}
+
+ptrdiff_t env_search(struct Env *env, ptrdiff_t sym)
+{
+	/* NOTE: this one is not recursive. */
+	for (ptrdiff_t i = 0; i != env->count; ++i)
+		if (sym == env->map[i].key)
+			return i;
+	return -1;
+}
+
+bool env_map_append(struct Env *env, struct EnvEntry ent)
+{
+	if (env->count >= env->size) {
+		size_t nsize = (env->size + 8) * sizeof(struct EnvEntry);
+		struct EnvEntry *nmap = realloc(env->map, nsize);
+		if (!nmap)
+			return false;
+		env->map = nmap;
+		env->size = nsize;
+	}
+	(env->map)[(env->count)++] = ent;
+	return true;
+}
+
+bool env_update(struct Env *env, ptrdiff_t sym, struct Object *obj)
+{
+	/* NOTE: this one is not recursive.  This will overwrite an
+	 * entry in the Env passed in, but will shadow an entry in a
+	 * parent Env.
+	 */
+	ptrdiff_t i = env_search(env, sym);
+	if (i == -1) {
+		struct EnvEntry ent = {.key = sym, .value = obj};
+		return env_map_append(env, ent);
+	}
+	env->map[i].value = obj;
+	return true;
+}
 
 char quote_escape(char c)
 {
@@ -153,7 +224,7 @@ void free_string(struct String *str)
 
 struct String string_from_cstring(char *cstr)
 {
-	struct String str = string();
+	struct String str = make_string();
 	while (*cstr) {
 		string_append(&str, *cstr);
 		++cstr;
@@ -325,6 +396,7 @@ void destroy_object(struct Machine *mach, struct Object *obj)
 	case TypeInteger:
 	case TypeDouble:
 	case TypePair:
+	case TypeEnv:
 	case TypeError:
 		free(obj);
 		return;
@@ -373,7 +445,7 @@ struct String read_word(FILE *stream)
 {
 	enum { normal, quote, quoteEscape } mode = normal;
 
-	struct String str = string();
+	struct String str = make_string();
 	while (1) {
 		int c = getc(stream);
 		if (c == EOF)
@@ -435,20 +507,20 @@ struct StringArray read_expression(FILE *stream)
 
 	int countOpen = 0;
 	int countClose = 0;
-	struct StringArray words = string_array();
+	struct StringArray words = make_string_array();
 
 	while (true) {
 		if (words.count && countOpen == countClose)
 			return words;
 		struct String nextWord = read_word(stream);
 		if (!nextWord.cstr)
-			return string_array();
+			return make_string_array();
 		if (is_list_start(nextWord))
 			++countOpen;
 		else if (is_list_end(nextWord))
 			++countClose;
 		if (!string_array_append(&words, nextWord))
-			return string_array();
+			return make_string_array();
 	}
 }
 
@@ -564,6 +636,8 @@ void obj_print_dotted(struct Machine *mach, struct Object *obj)
 			printf(") ");
 		}
 		return;
+	case TypeEnv:
+		printf("*ENV*");
 	case TypeError:
 		printf("*ERROR*");
 		return;
@@ -620,6 +694,8 @@ void obj_print_inner(struct Machine *mach, struct Object *obj)
 		else
 			obj_print_inner(mach, obj->pair.cdr);
 		return;
+	case TypeEnv:
+		printf("*ENV*");
 	case TypeError:
 		printf("*ERROR*");
 		return;
@@ -628,15 +704,20 @@ void obj_print_inner(struct Machine *mach, struct Object *obj)
 
 struct Object *eval(struct Machine *mach, struct Object *obj)
 {
+	struct Object *nobj;
 	switch (obj->type) {
 	case TypeString:
 	case TypeInteger:
 	case TypeDouble:
 	case TypeError:
+	case TypeEnv:
 		return obj;
 	case TypeSymbol:
-		fprintf(stderr, "Symbol lookup not implemented yet\n");
-		return create_error_object(mach);
+		nobj = env_get(&mach->env, obj->symbol);
+		if (nobj)
+			return nobj;
+		else
+			return create_error_object(mach);
 	case TypePair:
 		fprintf(stderr, "Function calls not implemented yet\n");
 		return create_error_object(mach);
@@ -647,7 +728,12 @@ struct Object *eval(struct Machine *mach, struct Object *obj)
 
 int main(int argc, char *argv[])
 {
-	struct Machine mach = machine();
+	struct Machine mach = make_machine();
+
+	struct Object *s1 = create_symbol_object(&mach, string_from_cstring("s1"));
+	struct Object *v1 = create_integer_object(&mach, 31);
+	env_update(&mach.env, s1->symbol, v1);
+
 	while (1) {
 		struct StringArray words = read_expression(stdin);
 		struct Object *obj = read(&mach, &words);
@@ -664,7 +750,7 @@ int main(int argc, char *argv[])
 /* { */
 /* 	if (argc < 3) */
 /* 		return -1; */
-/* 	struct StringArray stra = string_array(); */
+/* 	struct StringArray stra = make_string_array(); */
 /* 	struct String key = string_from_cstring(argv[1]); */
 /* 	for (ptrdiff_t i = 2; i != argc; ++i) */
 /* 		string_array_append(&stra, string_from_cstring(argv[i])); */
