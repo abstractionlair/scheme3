@@ -63,15 +63,33 @@ bool is_list_end(char *word)
 	return word[0] == ')' && word[1] == '\0';
 }
 
-bool string_append(char **str, size_t *count, size_t *size, char c)
+struct String {
+	char * cstr;
+	size_t count;
+	size_t size;
+};
+
+/* bool string_append(char **str, size_t *count, size_t *size, char c) */
+/* { */
+/* 	if (*count >= *size){ */
+/* 		char *nstr = realloc(*str, *count + 32); */
+/* 		if (!nstr) */
+/* 			return false; */
+/* 		*str = nstr; */
+/* 	} */
+/* 	(*str)[(*count)++] = c; */
+/* 	return true; */
+/* } */
+
+bool string_append(struct String *str, char c)
 {
-	if (*count >= *size){
-		char *nstr = realloc(*str, *count + 32);
-		if (!nstr)
+	if (str->count >= str->size){
+		char *ncstr = realloc(str->cstr, str->count + 32);
+		if (!ncstr)
 			return false;
-		*str = nstr;
+		str->cstr = ncstr;
 	}
-	(*str)[(*count)++] = c;
+	(str->cstr)[(str->count)++] = c;
 	return true;
 }
 
@@ -91,9 +109,10 @@ char *read_word(FILE *stream)
 {
 	enum { normal, quote, quoteEscape } mode = normal;
 	
-	char * str = 0;
-	size_t count = 0;
-	size_t size = 0;
+	//char * str = 0;
+	//size_t count = 0;
+	//size_t size = 0;
+	struct String str = { .cstr = 0, .count = 0, .size = 0 };
 	while (1) {
 		int c = getc(stream);
 		if (c == EOF)
@@ -101,23 +120,25 @@ char *read_word(FILE *stream)
 		switch (mode) {
 		case normal:
 			// Skip space at the beginning
-			if (!count && is_filler(c))
+			if (!str.count && is_filler(c))
 				continue;
 			// Ensure '(' and ')' form their own words.
 			if (is_self_delimited(c)) {
-				if (count)
+				if (str.count)
 					if (ungetc(c, stream) == EOF)
 						goto out_no_str;
 					else
 						goto out_str;
 				else {
-					string_append(&str, &count, &size, c);;
+					//string_append(&str, &count, &size, c);;
+					string_append(&str, c);;
 					goto out_str;
 				}
 			}
 			if (is_delimiter(c))
 				goto out_str;
-			string_append(&str, &count, &size, c);;
+			//string_append(&str, &count, &size, c);;
+			string_append(&str, c);;
 			if (is_quote_start(c))
 				mode = quote;
 			else if (is_delimiter(c))
@@ -127,13 +148,15 @@ char *read_word(FILE *stream)
 			if ((char)c == '\\') {
 				mode = quoteEscape;
 			} else {
-				string_append(&str, &count, &size, c);;
+				//string_append(&str, &count, &size, c);;
+				string_append(&str, c);;
 				if (is_quote_end(c))
 					mode = normal;
 			}
 			break;
 		case quoteEscape:
-			string_append(&str, &count, &size, quote_escape(c));
+			//string_append(&str, &count, &size, quote_escape(c));
+			string_append(&str, quote_escape(c));
 			mode = quote;
 			break;
 		default:
@@ -141,9 +164,10 @@ char *read_word(FILE *stream)
 		}
 	}
 out_str:
-	string_append(&str, &count, &size, '\0');
+	//string_append(&str, &count, &size, '\0');
+	string_append(&str, '\0');
 out_no_str:
-	return str;
+	return str.cstr;
 }
 
 char **read_expression(size_t *countWords, size_t *sizeWords, FILE *stream)
@@ -491,7 +515,21 @@ void obj_print_inner(struct Machine *machine, struct Object *obj)
 	}
 }
 
- 
+struct Object *eval(struct Machine *machine, struct Object *obj)
+{
+	switch (obj->type) {
+	case TypeSymbol:
+	case TypeString:
+	case TypeInteger:
+	case TypeDouble:
+	case TypeError:
+		return obj;
+	case TypePair:
+		fprintf(stderr, "Function calls not implemented yet\n");
+		return create_error_object(machine);
+	}
+	return 0;
+}
 
 
 
@@ -532,9 +570,11 @@ int main(int argc, char *argv[])
 		char **words = read_expression(&countWords, &sizeWords, stdin);
 		size_t position = 0;
 		struct Object *obj = read(&machine, words, countWords, sizeWords, &position);
-		obj_print_dotted(&machine, obj);
-		printf("\n");
+		//obj_print_dotted(&machine, obj);
+		//printf("\n");
 		obj_print(&machine, obj);
+		printf("\n-> ");
+		obj_print(&machine, eval(&machine, obj));
 		printf("\n");
 		free(words);
 	}
