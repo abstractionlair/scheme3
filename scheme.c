@@ -766,12 +766,6 @@ struct Object *eval(struct Machine *machine, struct Object *obj)
 	return 0;
 }
 
-struct Object *print_args_addr(struct Machine *machine, struct Object *args)
-{
-	printf("You called me on %p\n", args);
-	return create_pair_object(machine, 0, 0);
-}
-
 struct Object *eval_pair(struct Machine *machine, struct Object *obj)
 {
 	if (obj->pair.car) {
@@ -788,11 +782,13 @@ struct Object *define(struct Machine *machine, struct Object *args)
 	if (args->type == TypePair) {
 		Object *key = car(args);
 		if (key->type != TypeSymbol) {
-			fprintf(stderr, "The key for a define must be a symbol.\n");
+			fprintf(stderr,
+				"The key for a define must be a symbol.\n");
 			return create_pair_object(machine, 0, 0);
 		}
 		if (cdr(args)->type != TypePair) {
-			fprintf(stderr, "Don't understand second argument for define.\n");
+			fprintf(stderr,
+				"Don't understand second argument for define.\n");
 			return create_pair_object(machine, 0, 0);
 		}
 		Object *value = eval(machine, cadr(args));
@@ -803,23 +799,19 @@ struct Object *define(struct Machine *machine, struct Object *args)
 	return create_error_object(machine);
 }
 
+void init_machine(struct Machine *machine)
+{
+	struct Object *s = create_symbol_object(machine,
+						string_from_cstring("define"));
+	struct BuiltinForm f = { .f = define };
+	struct Object *v = create_builtin_form_object(machine, f);
+	env_update(&machine->env, s->symbol, v);
+}
+
 int main(int argc, char *argv[])
 {
 	struct Machine machine = make_machine();
-
-	struct Object *s1 = create_symbol_object(&machine, string_from_cstring("s1"));
-	struct Object *v1 = create_integer_object(&machine, 31);
-	env_update(&machine.env, s1->symbol, v1);
-
-	struct Object *s2 = create_symbol_object(&machine, string_from_cstring("paa"));
-	struct BuiltinForm f2 = { .f = print_args_addr };
-	struct Object *v2 = create_builtin_form_object(&machine, f2);
-	env_update(&machine.env, s2->symbol, v2);
-
-	struct Object *s3 = create_symbol_object(&machine, string_from_cstring("define"));
-	struct BuiltinForm f3 = { .f = define };
-	struct Object *v3 = create_builtin_form_object(&machine, f3);
-	env_update(&machine.env, s3->symbol, v3);
+	init_machine(&machine);
 
 	while (1) {
 		struct StringArray words = read_expression(stdin);
