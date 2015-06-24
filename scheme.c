@@ -22,11 +22,7 @@ struct StringArray {
 typedef struct Object Object;
 typedef struct Pair Pair;
 typedef struct Env Env;
-
-struct Pair {
-	struct Object *car;
-	struct Object *cdr;
-};
+typedef struct Machine Machine;
 
 enum Type {
 	TypeSymbol,
@@ -35,7 +31,15 @@ enum Type {
 	TypeDouble,
 	TypePair,
 	TypeEnv,
+	//TypeFunction,
+	//TypeForm,
+	TypeBuiltinForm,
 	TypeError
+};
+
+struct Pair {
+	struct Object *car;
+	struct Object *cdr;
 };
 
 struct EnvEntry {
@@ -50,6 +54,14 @@ struct Env {
 	struct Env *parent;
 };
 
+typedef struct Object *(*builtinForm)(struct Machine *machine,
+				struct Object *args);
+
+struct BuiltinForm {
+	//struct Object *(*f)(struct Machine *machine, struct Object *args);
+	builtinForm f;
+};
+
 struct Object {
 	enum Type type;
 	union {
@@ -58,6 +70,7 @@ struct Object {
 		int integer;
 		double dbl;
 		struct Pair pair;
+		struct BuiltinForm builtinForm;
 	};
 };
 
@@ -305,7 +318,7 @@ void free_string_array_shallow(struct StringArray *stra)
 	stra->size = 0;
 }
 
-struct Object *alloc_object(struct Machine *mach)
+struct Object *alloc_object(struct Machine *machine)
 {
 	/*
 	 * Centralize this so that later we can keep track of them and
@@ -314,15 +327,15 @@ struct Object *alloc_object(struct Machine *mach)
 	return malloc(sizeof(struct Object));
 }
 
-struct Object *create_symbol_object(struct Machine *mach, struct String str)
+struct Object *create_symbol_object(struct Machine *machine, struct String str)
 {
-	struct Object *obj = alloc_object(mach);
+	struct Object *obj = alloc_object(machine);
 	if (obj) {
 		obj->type = TypeSymbol;
-		obj->symbol = string_array_search(mach->symbols, str);
+		obj->symbol = string_array_search(machine->symbols, str);
 		if (obj->symbol == -1) {
-			obj->symbol = mach->symbols.count;
-			if (!string_array_append(&mach->symbols, str)) {
+			obj->symbol = machine->symbols.count;
+			if (!string_array_append(&machine->symbols, str)) {
 				free(obj);
 				return 0;
 			}
@@ -331,9 +344,9 @@ struct Object *create_symbol_object(struct Machine *mach, struct String str)
 	return obj;
 }
 
-struct Object *create_string_object(struct Machine *mach, struct String str)
+struct Object *create_string_object(struct Machine *machine, struct String str)
 {
-	struct Object *obj = alloc_object(mach);
+	struct Object *obj = alloc_object(machine);
 	if (obj) {
 		obj->type = TypeString;
 		obj->string = str;
@@ -341,9 +354,9 @@ struct Object *create_string_object(struct Machine *mach, struct String str)
 	return obj;
 }
 
-struct Object *create_integer_object(struct Machine *mach, int integer)
+struct Object *create_integer_object(struct Machine *machine, int integer)
 {
-	struct Object *obj = alloc_object(mach);
+	struct Object *obj = alloc_object(machine);
 	if (obj) {
 		obj->type = TypeInteger;
 		obj->integer = integer;
@@ -351,9 +364,9 @@ struct Object *create_integer_object(struct Machine *mach, int integer)
 	return obj;
 }
 
-struct Object *create_double_object(struct Machine *mach, double dbl)
+struct Object *create_double_object(struct Machine *machine, double dbl)
 {
-	struct Object *obj = alloc_object(mach);
+	struct Object *obj = alloc_object(machine);
 	if (obj) {
 		obj->type = TypeDouble;
 		obj->dbl = dbl;
@@ -361,10 +374,10 @@ struct Object *create_double_object(struct Machine *mach, double dbl)
 	return obj;
 }
 
-struct Object *create_pair_object(struct Machine *mach, struct Object *car,
+struct Object *create_pair_object(struct Machine *machine, struct Object *car,
 				struct Object *cdr)
 {
-	struct Object *obj = alloc_object(mach);
+	struct Object *obj = alloc_object(machine);
 	if (obj) {
 		obj->type = TypePair;
 		obj->pair.car = car;
@@ -373,15 +386,26 @@ struct Object *create_pair_object(struct Machine *mach, struct Object *car,
 	return obj;
 }
 
-struct Object *create_error_object(struct Machine *mach)
+struct Object *create_error_object(struct Machine *machine)
 {
-	struct Object *obj = alloc_object(mach);
+	struct Object *obj = alloc_object(machine);
 	if (obj)
 		obj->type = TypeError;
 	return obj;
 }
 
-void destroy_object(struct Machine *mach, struct Object *obj)
+struct Object *create_builtin_form_object(struct Machine *machine,
+					struct BuiltinForm f)
+{
+	struct Object *obj = alloc_object(machine);
+	if (obj) {
+		obj->type = TypeBuiltinForm;
+		obj->builtinForm = f;
+	}
+	return obj;
+}
+
+void destroy_object(struct Machine *machine, struct Object *obj)
 {
 	/* NOTE: we want to free things that are owned by the object.
 	 * That does not include other objects referenced by the given object.
@@ -398,6 +422,7 @@ void destroy_object(struct Machine *mach, struct Object *obj)
 	case TypePair:
 	case TypeEnv:
 	case TypeError:
+	case TypeBuiltinForm:
 		free(obj);
 		return;
 	}
@@ -414,13 +439,18 @@ struct Object *cdr(struct Object *obj)
 	return obj->pair.cdr;
 }
 
-struct Object *reverse_list(struct Machine *mach, struct Object *inList)
+struct Object *cadr(struct Object *obj)
+{
+	return obj->pair.cdr->pair.car;
+}
+
+struct Object *reverse_list(struct Machine *machine, struct Object *inList)
 {
 	if (inList->type != TypePair)
 		return inList;
-	struct Object *outList = create_pair_object(mach, 0, 0);
+	struct Object *outList = create_pair_object(machine, 0, 0);
 	while (inList->type == TypePair) {
-		outList = create_pair_object(mach, car(inList), outList);
+		outList = create_pair_object(machine, car(inList), outList);
 		inList = inList->pair.cdr;
 	}
 	return outList;
@@ -524,12 +554,12 @@ struct StringArray read_expression(FILE *stream)
 	}
 }
 
-struct Object *read_list(struct Machine *mach, struct StringArray *words,
+struct Object *read_list(struct Machine *machine, struct StringArray *words,
 			ptrdiff_t *pos);
 
-struct Object *read_non_list(struct Machine *mach, struct String word);
+struct Object *read_non_list(struct Machine *machine, struct String word);
 
-struct Object *read(struct Machine *mach, struct StringArray *words)
+struct Object *read(struct Machine *machine, struct StringArray *words)
 {
 	/*
 	 * Create a scheme object from a list of word strings.
@@ -544,20 +574,20 @@ struct Object *read(struct Machine *mach, struct StringArray *words)
 	if (is_list_start(word)) {
 		free(word.cstr);
 		ptrdiff_t pos = 1;
-		struct Object *obj = read_list(mach, words, &pos);
+		struct Object *obj = read_list(machine, words, &pos);
 		free_string_array_shallow(words);
 		return obj;
 	}
 	else {
 		free_string_array_shallow(words);
-		return read_non_list(mach, word);
+		return read_non_list(machine, word);
 	}
 }
 
-struct Object *read_list(struct Machine *mach, struct StringArray *words,
+struct Object *read_list(struct Machine *machine, struct StringArray *words,
 			ptrdiff_t *pos)
 {
-	struct Object *first = create_pair_object(mach, 0, 0);
+	struct Object *first = create_pair_object(machine, 0, 0);
 	if (!first)
 		return 0;
 	struct Object *into = first;
@@ -569,11 +599,11 @@ struct Object *read_list(struct Machine *mach, struct StringArray *words,
 			return first;
 		} else if (is_list_start(word)) {
 			free(word.cstr);
-			into->pair.car = read_list(mach, words, pos);
+			into->pair.car = read_list(machine, words, pos);
 		} else {
-			into->pair.car = read_non_list(mach, word);
+			into->pair.car = read_non_list(machine, word);
 		}
-		into->pair.cdr = create_pair_object(mach, 0, 0);
+		into->pair.cdr = create_pair_object(machine, 0, 0);
 		if (!into->pair.cdr)
 			return 0;
 		into = into->pair.cdr;
@@ -582,33 +612,33 @@ struct Object *read_list(struct Machine *mach, struct StringArray *words,
 	return 0;
 }
 
-struct Object *read_non_list(struct Machine *mach, struct String word)
+struct Object *read_non_list(struct Machine *machine, struct String word)
 {
 	size_t n;
 	switch (deduce_type(word)) {
 	case TypeSymbol:
-		return create_symbol_object(mach, word);
+		return create_symbol_object(machine, word);
 	case TypeString:
 		// Get rid of parentheses.
 		n = strlen(word.cstr);
 		memmove(word.cstr, word.cstr + 1, n - 2);
 		word.cstr[n - 2] = '\0';
-		return create_string_object(mach, word);
+		return create_string_object(machine, word);
 	case TypeInteger:
-		return create_integer_object(mach, atoi(word.cstr));
+		return create_integer_object(machine, atoi(word.cstr));
 	case TypeDouble:
-		return create_double_object(mach, atof(word.cstr));
+		return create_double_object(machine, atof(word.cstr));
 	default:
 		assert(0);
 	}
 	return 0;
 }
 
-void obj_print_dotted(struct Machine *mach, struct Object *obj)
+void obj_print_dotted(struct Machine *machine, struct Object *obj)
 {
 	switch (obj->type) {
 	case TypeSymbol:
-		printf("<%s>", mach->symbols.strs[obj->symbol].cstr);
+		printf("<%s>", machine->symbols.strs[obj->symbol].cstr);
 		return;
 	case TypeString:
 		printf("\"%s\"", obj->string.cstr);
@@ -627,30 +657,34 @@ void obj_print_dotted(struct Machine *mach, struct Object *obj)
 			if (!obj->pair.car)
 				printf("null");
 			else
-				obj_print_dotted(mach, obj->pair.car);
+				obj_print_dotted(machine, obj->pair.car);
 			printf(". ");
 			if (!obj->pair.cdr)
 				printf("null");
 			else
-				obj_print_dotted(mach, obj->pair.cdr);
+				obj_print_dotted(machine, obj->pair.cdr);
 			printf(") ");
 		}
 		return;
 	case TypeEnv:
 		printf("*ENV*");
+		return;
 	case TypeError:
 		printf("*ERROR*");
+		return;
+	case TypeBuiltinForm:
+		printf("*BUILTIN_FORM*");
 		return;
 	}
 }
 
-void obj_print_inner(struct Machine *mach, struct Object *obj);
+void obj_print_inner(struct Machine *machine, struct Object *obj);
 
-void obj_print(struct Machine *mach, struct Object *obj)
+void obj_print(struct Machine *machine, struct Object *obj)
 {
 	if (obj->type == TypePair)
 		printf("(");
-	return obj_print_inner(mach, obj);
+	return obj_print_inner(machine, obj);
 }
 
 bool obj_is_nil(struct Object * obj)
@@ -658,11 +692,11 @@ bool obj_is_nil(struct Object * obj)
 	return obj && obj->type == TypePair && !obj->pair.car && !obj->pair.cdr;
 }
 
-void obj_print_inner(struct Machine *mach, struct Object *obj)
+void obj_print_inner(struct Machine *machine, struct Object *obj)
 {
 	switch (obj->type) {
 	case TypeSymbol:
-		printf("<%s> ", mach->symbols.strs[obj->symbol].cstr);
+		printf("<%s> ", machine->symbols.strs[obj->symbol].cstr);
 		return;
 	case TypeString:
 		printf("\"%s\" ", obj->string.cstr);
@@ -674,35 +708,41 @@ void obj_print_inner(struct Machine *mach, struct Object *obj)
 		printf("%f ", obj->dbl);
 		return;
 	case TypePair:
-		// Car and Cdr are null
+		/* Car and Cdr are null */
 		if (!obj->pair.car && !obj->pair.cdr) {
 			printf("nil) ");
 			return;
 		}
-		// Only car is null -> unexpected so fallback to dotted.
+		/* Only car is null -> unexpected so fallback to dotted. */
 		if (!obj->pair.car) {
-			obj_print_dotted(mach, obj);
+			obj_print_dotted(machine, obj);
 			return;
 		}
 		if (obj->pair.car && obj->pair.car->type == TypePair)
 			printf("( ");
-		obj_print_inner(mach, obj->pair.car);
+		obj_print_inner(machine, obj->pair.car);
 
 		// Cdr
 		if (obj_is_nil(obj->pair.cdr))
 			printf(") ");
 		else
-			obj_print_inner(mach, obj->pair.cdr);
+			obj_print_inner(machine, obj->pair.cdr);
 		return;
 	case TypeEnv:
 		printf("*ENV*");
+		return;
 	case TypeError:
 		printf("*ERROR*");
+		return;
+	case TypeBuiltinForm:
+		printf("*BUILTIN_FORM*");
 		return;
 	}
 }
 
-struct Object *eval(struct Machine *mach, struct Object *obj)
+struct Object *eval_pair(struct Machine *machine, struct Object *obj);
+
+struct Object *eval(struct Machine *machine, struct Object *obj)
 {
 	struct Object *nobj;
 	switch (obj->type) {
@@ -711,36 +751,83 @@ struct Object *eval(struct Machine *mach, struct Object *obj)
 	case TypeDouble:
 	case TypeError:
 	case TypeEnv:
+	case TypeBuiltinForm:
 		return obj;
 	case TypeSymbol:
-		nobj = env_get(&mach->env, obj->symbol);
+		nobj = env_get(&machine->env, obj->symbol);
 		if (nobj)
 			return nobj;
 		else
-			return create_error_object(mach);
+			return create_error_object(machine);
 	case TypePair:
-		fprintf(stderr, "Function calls not implemented yet\n");
-		return create_error_object(mach);
+		return eval_pair(machine, obj);
 	}
 	assert(0);
 	return 0;
 }
 
+struct Object *print_args_addr(struct Machine *machine, struct Object *args)
+{
+	printf("You called me on %p\n", args);
+	return create_pair_object(machine, 0, 0);
+}
+
+struct Object *eval_pair(struct Machine *machine, struct Object *obj)
+{
+	if (obj->pair.car) {
+		struct Object *ecar = eval(machine, obj->pair.car);
+		if (ecar->type == TypeBuiltinForm)
+			return ecar->builtinForm.f(machine, obj->pair.cdr);
+	}
+	fprintf(stderr, "Function calls not implemented yet\n");
+	return create_error_object(machine);
+}
+
+struct Object *define(struct Machine *machine, struct Object *args)
+{
+	if (args->type == TypePair) {
+		Object *key = car(args);
+		if (key->type != TypeSymbol) {
+			fprintf(stderr, "The key for a define must be a symbol.\n");
+			return create_pair_object(machine, 0, 0);
+		}
+		if (cdr(args)->type != TypePair) {
+			fprintf(stderr, "Don't understand second argument for define.\n");
+			return create_pair_object(machine, 0, 0);
+		}
+		Object *value = eval(machine, cadr(args));
+		env_update(&machine->env, key->symbol, value);
+		return create_pair_object(machine, 0, 0);
+	}
+	fprintf(stderr, "Don't know how to define what you asked for\n");
+	return create_error_object(machine);
+}
+
 int main(int argc, char *argv[])
 {
-	struct Machine mach = make_machine();
+	struct Machine machine = make_machine();
 
-	struct Object *s1 = create_symbol_object(&mach, string_from_cstring("s1"));
-	struct Object *v1 = create_integer_object(&mach, 31);
-	env_update(&mach.env, s1->symbol, v1);
+	struct Object *s1 = create_symbol_object(&machine, string_from_cstring("s1"));
+	struct Object *v1 = create_integer_object(&machine, 31);
+	env_update(&machine.env, s1->symbol, v1);
+
+	struct Object *s2 = create_symbol_object(&machine, string_from_cstring("paa"));
+	struct BuiltinForm f2 = { .f = print_args_addr };
+	struct Object *v2 = create_builtin_form_object(&machine, f2);
+	env_update(&machine.env, s2->symbol, v2);
+
+	struct Object *s3 = create_symbol_object(&machine, string_from_cstring("define"));
+	struct BuiltinForm f3 = { .f = define };
+	struct Object *v3 = create_builtin_form_object(&machine, f3);
+	env_update(&machine.env, s3->symbol, v3);
 
 	while (1) {
 		struct StringArray words = read_expression(stdin);
-		struct Object *obj = read(&mach, &words);
+		struct Object *obj = read(&machine, &words);
 
-		obj_print(&mach, obj);
+		obj_print(&machine, obj);
 		printf("\n-> ");
-		obj_print(&mach, eval(&mach, obj));
+		obj_print(&machine, eval(&machine, obj));
 		printf("\n");
 	}
 	return 0;
