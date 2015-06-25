@@ -54,11 +54,9 @@ struct Env {
 	struct Env *parent;
 };
 
-typedef struct Object *(*builtinForm)(struct Machine *machine,
-				struct Object *args);
+typedef struct Object *(*builtinForm)(struct Machine *m, struct Object *args);
 
 struct BuiltinForm {
-	//struct Object *(*f)(struct Machine *machine, struct Object *args);
 	builtinForm f;
 };
 
@@ -70,13 +68,14 @@ struct Object {
 		int integer;
 		double dbl;
 		struct Pair pair;
+		struct Env env;
 		struct BuiltinForm builtinForm;
 	};
 };
 
 struct Machine {
 	struct StringArray symbols;
-	struct Env env;
+	struct Object *rootEnv;
 };
 
 struct String make_string(void)
@@ -95,12 +94,6 @@ struct Env make_env(void)
 {
 	struct Env e = {.map = 0, .count = 0, .size = 0, .parent = 0};
 	return e;
-}
-
-struct Machine make_machine(void)
-{
-	struct Machine m = {.symbols = make_string_array(), .env = make_env()};
-	return m;
 }
 
 struct Object *env_get(struct Env *env, ptrdiff_t sym)
@@ -391,6 +384,16 @@ struct Object *create_error_object(struct Machine *machine)
 	struct Object *obj = alloc_object(machine);
 	if (obj)
 		obj->type = TypeError;
+	return obj;
+}
+
+struct Object *create_env_object(struct Machine *machine)
+{
+	struct Object *obj = alloc_object(machine);
+	if (obj) {
+		obj->type = TypeEnv;
+		obj->env = make_env();
+	}
 	return obj;
 }
 
@@ -754,7 +757,7 @@ struct Object *eval(struct Machine *machine, struct Object *obj)
 	case TypeBuiltinForm:
 		return obj;
 	case TypeSymbol:
-		nobj = env_get(&machine->env, obj->symbol);
+		nobj = env_get(&machine->rootEnv->env, obj->symbol);
 		if (nobj)
 			return nobj;
 		else
@@ -792,52 +795,40 @@ struct Object *define(struct Machine *machine, struct Object *args)
 			return create_pair_object(machine, 0, 0);
 		}
 		Object *value = eval(machine, cadr(args));
-		env_update(&machine->env, key->symbol, value);
+		env_update(&machine->rootEnv->env, key->symbol, value);
 		return create_pair_object(machine, 0, 0);
 	}
 	fprintf(stderr, "Don't know how to define what you asked for\n");
 	return create_error_object(machine);
 }
 
-void init_machine(struct Machine *machine)
+struct Machine *create_machine()
 {
-	struct Object *s = create_symbol_object(machine,
-						string_from_cstring("define"));
-	struct BuiltinForm f = { .f = define };
-	struct Object *v = create_builtin_form_object(machine, f);
-	env_update(&machine->env, s->symbol, v);
+	struct Machine *machine = malloc(sizeof(*machine));
+	if (machine) {
+		machine->symbols = make_string_array();
+		machine->rootEnv = create_env_object(machine);
+		struct Object *s = create_symbol_object(machine,
+							string_from_cstring("define"));
+		struct BuiltinForm f = { .f = define };
+		struct Object *v = create_builtin_form_object(machine, f);
+		env_update(&machine->rootEnv->env, s->symbol, v);
+	}
+	return machine;
 }
 
 int main(int argc, char *argv[])
 {
-	struct Machine machine = make_machine();
-	init_machine(&machine);
+	struct Machine *machine = create_machine();
 
 	while (1) {
 		struct StringArray words = read_expression(stdin);
-		struct Object *obj = read(&machine, &words);
+		struct Object *obj = read(machine, &words);
 
-		obj_print(&machine, obj);
+		obj_print(machine, obj);
 		printf("\n-> ");
-		obj_print(&machine, eval(&machine, obj));
+		obj_print(machine, eval(machine, obj));
 		printf("\n");
 	}
 	return 0;
 }
-
-/* int main(int argc, char *argv[]) */
-/* { */
-/* 	if (argc < 3) */
-/* 		return -1; */
-/* 	struct StringArray stra = make_string_array(); */
-/* 	struct String key = string_from_cstring(argv[1]); */
-/* 	for (ptrdiff_t i = 2; i != argc; ++i) */
-/* 		string_array_append(&stra, string_from_cstring(argv[i])); */
-
-/* 	printf("Key: %s\n", key.cstr); */
-/* 	for (ptrdiff_t i = 0; i != stra.count; ++i) */
-/* 		printf("%ti: %s\n", i, stra.strs[i].cstr); */
-
-/* 	printf("%ti\n", string_array_search(stra, key)); */
-/* 	return 0; */
-/* } */
