@@ -6,17 +6,7 @@
 #include <stddef.h>
 #include <string.h>
 
-struct String {
-	char *cstr;
-	size_t count;
-	size_t size;
-};
-
-struct StringArray {
-	struct String *strs;
-	size_t count;
-	size_t size;
-};
+#include "base.h"
 
 /* For circular references */
 typedef struct Object Object;
@@ -77,18 +67,6 @@ struct Machine {
 	struct StringArray symbols;
 	struct Object *rootEnv;
 };
-
-struct String make_string(void)
-{
-	struct String s = {.cstr = 0, .count = 0, .size = 0};
-	return s;
-}
-
-struct StringArray make_string_array(void)
-{
-	struct StringArray sa = {.strs = 0, .count = 0, .size = 0};
-	return sa;
-}
 
 struct Env make_env(void)
 {
