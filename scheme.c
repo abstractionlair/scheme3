@@ -1,60 +1,14 @@
+#include "base.h"
+#include "env.h"
+#include "read.h"
+#include "scheme.h"
 #include <assert.h>
 #include <ctype.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stddef.h>
 #include <string.h>
-#include "env.h"
-#include "base.h"
-#include "read.h"
-#include "scheme_forward.h"
-
-enum Type {
-	TypeSymbol,
-	TypeString,
-	TypeInteger,
-	TypeDouble,
-	TypePair,
-	TypeEnv,
-	//TypeFunction,
-	//TypeForm,
-	TypeBuiltinForm,
-	TypeError
-};
-
-struct Pair {
-	struct Object *car;
-	struct Object *cdr;
-};
-
-
-typedef struct Object *(*builtinForm)(struct Machine *m, struct Object *args);
-
-struct BuiltinForm {
-	builtinForm f;
-};
-
-struct Object {
-	enum Type type;
-	union {
-		ptrdiff_t symbol;
-		struct String string;
-		int integer;
-		double dbl;
-		struct Pair pair;
-		struct Env env;
-		struct BuiltinForm builtinForm;
-	};
-};
-
-struct Machine {
-	struct StringArray symbols;
-	struct Object *rootEnv;
-};
-
-
-
 
 struct Object *alloc_object(struct Machine *machine)
 {
@@ -204,205 +158,10 @@ struct Object *reverse_list(struct Machine *machine, struct Object *inList)
 	return outList;
 }
 
-enum Type deduce_type(struct String word)
-{
-	if (word.cstr[0] == '\"') {
-		return TypeString;
-	}
-	else if (strchr("0123456789+-.", word.cstr[0])) {
-		if (strpbrk(word.cstr, ".eE")) {
-			return TypeDouble;
-		} else {
-			return TypeInteger;
-		}
-	}
-	return TypeSymbol;
-}
-
-struct Object *read_list(struct Machine *machine, struct StringArray *words,
-			ptrdiff_t *pos);
-
-struct Object *read_non_list(struct Machine *machine, struct String word);
-
-struct Object *read(struct Machine *machine, struct StringArray *words)
-{
-	/*
-	 * Create a scheme object from a list of word strings.
-	 * Takes ownership of the words and clears the array.
-	 */
-
-	if (!words->count) {
-		free_string_array_shallow(words);
-		return 0;
-	}
-	struct String word = words->strs[0];
-	if (is_list_start(word)) {
-		free(word.cstr);
-		ptrdiff_t pos = 1;
-		struct Object *obj = read_list(machine, words, &pos);
-		free_string_array_shallow(words);
-		return obj;
-	}
-	else {
-		free_string_array_shallow(words);
-		return read_non_list(machine, word);
-	}
-}
-
-struct Object *read_list(struct Machine *machine, struct StringArray *words,
-			ptrdiff_t *pos)
-{
-	struct Object *first = create_pair_object(machine, 0, 0);
-	if (!first)
-		return 0;
-	struct Object *into = first;
-	while (*pos < words->count) {
-		struct String word = words->strs[*pos];
-		++*pos;
-		if (is_list_end(word)) {
-			free(word.cstr);
-			return first;
-		} else if (is_list_start(word)) {
-			free(word.cstr);
-			into->pair.car = read_list(machine, words, pos);
-		} else {
-			into->pair.car = read_non_list(machine, word);
-		}
-		into->pair.cdr = create_pair_object(machine, 0, 0);
-		if (!into->pair.cdr)
-			return 0;
-		into = into->pair.cdr;
-	}
-	assert(0);
-	return 0;
-}
-
-struct Object *read_non_list(struct Machine *machine, struct String word)
-{
-	size_t n;
-	switch (deduce_type(word)) {
-	case TypeSymbol:
-		return create_symbol_object(machine, word);
-	case TypeString:
-		// Get rid of parentheses.
-		n = strlen(word.cstr);
-		memmove(word.cstr, word.cstr + 1, n - 2);
-		word.cstr[n - 2] = '\0';
-		return create_string_object(machine, word);
-	case TypeInteger:
-		return create_integer_object(machine, atoi(word.cstr));
-	case TypeDouble:
-		return create_double_object(machine, atof(word.cstr));
-	default:
-		assert(0);
-	}
-	return 0;
-}
-
-void obj_print_dotted(struct Machine *machine, struct Object *obj)
-{
-	switch (obj->type) {
-	case TypeSymbol:
-		printf("<%s>", machine->symbols.strs[obj->symbol].cstr);
-		return;
-	case TypeString:
-		printf("\"%s\"", obj->string.cstr);
-		return;
-	case TypeInteger:
-		printf("%i", obj->integer);
-		return;
-	case TypeDouble:
-		printf("%f", obj->dbl);
-		return;
-	case TypePair:
-		if (!obj->pair.car && !obj->pair.cdr)
-			printf("nil");
-		else {
-			printf("(");
-			if (!obj->pair.car)
-				printf("null");
-			else
-				obj_print_dotted(machine, obj->pair.car);
-			printf(". ");
-			if (!obj->pair.cdr)
-				printf("null");
-			else
-				obj_print_dotted(machine, obj->pair.cdr);
-			printf(") ");
-		}
-		return;
-	case TypeEnv:
-		printf("*ENV*");
-		return;
-	case TypeError:
-		printf("*ERROR*");
-		return;
-	case TypeBuiltinForm:
-		printf("*BUILTIN_FORM*");
-		return;
-	}
-}
-
-void obj_print_inner(struct Machine *machine, struct Object *obj);
-
-void obj_print(struct Machine *machine, struct Object *obj)
-{
-	if (obj->type == TypePair)
-		printf("(");
-	return obj_print_inner(machine, obj);
-}
 
 bool obj_is_nil(struct Object * obj)
 {
 	return obj && obj->type == TypePair && !obj->pair.car && !obj->pair.cdr;
-}
-
-void obj_print_inner(struct Machine *machine, struct Object *obj)
-{
-	switch (obj->type) {
-	case TypeSymbol:
-		printf("<%s> ", machine->symbols.strs[obj->symbol].cstr);
-		return;
-	case TypeString:
-		printf("\"%s\" ", obj->string.cstr);
-		return;
-	case TypeInteger:
-		printf("%i ", obj->integer);
-		return;
-	case TypeDouble:
-		printf("%f ", obj->dbl);
-		return;
-	case TypePair:
-		/* Car and Cdr are null */
-		if (!obj->pair.car && !obj->pair.cdr) {
-			printf("nil) ");
-			return;
-		}
-		/* Only car is null -> unexpected so fallback to dotted. */
-		if (!obj->pair.car) {
-			obj_print_dotted(machine, obj);
-			return;
-		}
-		if (obj->pair.car && obj->pair.car->type == TypePair)
-			printf("( ");
-		obj_print_inner(machine, obj->pair.car);
-
-		// Cdr
-		if (obj_is_nil(obj->pair.cdr))
-			printf(") ");
-		else
-			obj_print_inner(machine, obj->pair.cdr);
-		return;
-	case TypeEnv:
-		printf("*ENV*");
-		return;
-	case TypeError:
-		printf("*ERROR*");
-		return;
-	case TypeBuiltinForm:
-		printf("*BUILTIN_FORM*");
-		return;
-	}
 }
 
 struct Object *eval_pair(struct Machine *machine, struct Object *obj);
@@ -479,18 +238,3 @@ struct Machine *create_machine()
 	return machine;
 }
 
-int main(int argc, char *argv[])
-{
-	struct Machine *machine = create_machine();
-
-	while (1) {
-		struct StringArray words = read_expression(stdin);
-		struct Object *obj = read(machine, &words);
-
-		obj_print(machine, obj);
-		printf("\n-> ");
-		obj_print(machine, eval(machine, obj));
-		printf("\n");
-	}
-	return 0;
-}

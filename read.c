@@ -1,7 +1,10 @@
 #include "base.h"
 #include "read.h"
+#include "scheme.h"
 #include <assert.h>
 #include <ctype.h>
+#include <stdlib.h>
+#include <string.h>
 
 char quote_escape(char c)
 {
@@ -144,4 +147,99 @@ struct StringArray read_expression(FILE *stream)
 		if (!string_array_append(&words, nextWord))
 			return make_string_array();
 	}
+}
+
+struct Object *read_list(struct Machine *machine, struct StringArray *words,
+			ptrdiff_t *pos);
+
+struct Object *read_non_list(struct Machine *machine, struct String word);
+
+struct Object *read(struct Machine *machine, struct StringArray *words)
+{
+	/*
+	 * Create a scheme object from a list of word strings.
+	 * Takes ownership of the words and clears the array.
+	 */
+
+	if (!words->count) {
+		free_string_array_shallow(words);
+		return 0;
+	}
+	struct String word = words->strs[0];
+	if (is_list_start(word)) {
+		free(word.cstr);
+		ptrdiff_t pos = 1;
+		struct Object *obj = read_list(machine, words, &pos);
+		free_string_array_shallow(words);
+		return obj;
+	}
+	else {
+		free_string_array_shallow(words);
+		return read_non_list(machine, word);
+	}
+}
+
+struct Object *read_list(struct Machine *machine, struct StringArray *words,
+			ptrdiff_t *pos)
+{
+	struct Object *first = create_pair_object(machine, 0, 0);
+	if (!first)
+		return 0;
+	struct Object *into = first;
+	while (*pos < words->count) {
+		struct String word = words->strs[*pos];
+		++*pos;
+		if (is_list_end(word)) {
+			free(word.cstr);
+			return first;
+		} else if (is_list_start(word)) {
+			free(word.cstr);
+			into->pair.car = read_list(machine, words, pos);
+		} else {
+			into->pair.car = read_non_list(machine, word);
+		}
+		into->pair.cdr = create_pair_object(machine, 0, 0);
+		if (!into->pair.cdr)
+			return 0;
+		into = into->pair.cdr;
+	}
+	assert(0);
+	return 0;
+}
+
+enum Type deduce_type(struct String word)
+{
+	if (word.cstr[0] == '\"') {
+		return TypeString;
+	}
+	else if (strchr("0123456789+-.", word.cstr[0])) {
+		if (strpbrk(word.cstr, ".eE")) {
+			return TypeDouble;
+		} else {
+			return TypeInteger;
+		}
+	}
+	return TypeSymbol;
+}
+
+struct Object *read_non_list(struct Machine *machine, struct String word)
+{
+	size_t n;
+	switch (deduce_type(word)) {
+	case TypeSymbol:
+		return create_symbol_object(machine, word);
+	case TypeString:
+		// Get rid of parentheses.
+		n = strlen(word.cstr);
+		memmove(word.cstr, word.cstr + 1, n - 2);
+		word.cstr[n - 2] = '\0';
+		return create_string_object(machine, word);
+	case TypeInteger:
+		return create_integer_object(machine, atoi(word.cstr));
+	case TypeDouble:
+		return create_double_object(machine, atof(word.cstr));
+	default:
+		assert(0);
+	}
+	return 0;
 }
