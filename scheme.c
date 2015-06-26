@@ -158,7 +158,6 @@ struct Object *reverse_list(struct Machine *machine, struct Object *inList)
 	return outList;
 }
 
-
 bool obj_is_nil(struct Object * obj)
 {
 	return obj && obj->type == TypePair && !obj->pair.car && !obj->pair.cdr;
@@ -179,10 +178,15 @@ struct Object *eval(struct Machine *machine, struct Object *obj)
 		return obj;
 	case TypeSymbol:
 		nobj = env_get(&machine->rootEnv->env, obj->symbol);
-		if (nobj)
+		if (nobj) {
 			return nobj;
-		else
+		} else {
+			char *symStr = machine->symbols.strs[obj->symbol].cstr;
+			fprintf(stderr,
+				"Failed to find %s in environment.\n",
+				symStr);
 			return create_error_object(machine);
+		}
 	case TypePair:
 		return eval_pair(machine, obj);
 	}
@@ -208,12 +212,12 @@ struct Object *define(struct Machine *machine, struct Object *args)
 		if (key->type != TypeSymbol) {
 			fprintf(stderr,
 				"The key for a define must be a symbol.\n");
-			return create_pair_object(machine, 0, 0);
+			return create_error_object(machine);
 		}
 		if (cdr(args)->type != TypePair) {
 			fprintf(stderr,
 				"Don't understand second argument for define.\n");
-			return create_pair_object(machine, 0, 0);
+			return create_error_object(machine);
 		}
 		Object *value = eval(machine, cadr(args));
 		env_update(&machine->rootEnv->env, key->symbol, value);
@@ -223,18 +227,39 @@ struct Object *define(struct Machine *machine, struct Object *args)
 	return create_error_object(machine);
 }
 
+struct Object *quote(struct Machine *machine, struct Object *args)
+{
+	return car(args);
+}
+
 struct Machine *create_machine()
 {
-	struct Machine *machine = malloc(sizeof(*machine));
-	if (machine) {
-		machine->symbols = make_string_array();
-		machine->rootEnv = create_env_object(machine);
-		struct Object *s = create_symbol_object(machine,
-							string_from_cstring("define"));
-		struct BuiltinForm f = { .f = define };
-		struct Object *v = create_builtin_form_object(machine, f);
-		env_update(&machine->rootEnv->env, s->symbol, v);
+	struct Machine *m = malloc(sizeof(*m));
+	if (m) {
+		m->symbols = make_string_array();
+		m->rootEnv = create_env_object(m);
+
+		struct String name;
+		struct Object *symbol;
+		struct BuiltinForm func;
+		struct Object *funcObj;
+
+		/* define */
+		name = string_from_cstring("define");
+		symbol = create_symbol_object(m, name);
+		func.f = define;
+		funcObj = create_builtin_form_object(m, func);
+		env_update(&m->rootEnv->env, symbol->symbol, funcObj);
+
+		/* quote */
+		name = string_from_cstring("quote");
+		symbol = create_symbol_object(m, name);
+		func.f = quote;
+		funcObj = create_builtin_form_object(m, func);
+		env_update(&m->rootEnv->env, symbol->symbol, funcObj);
+
+
 	}
-	return machine;
+	return m;
 }
 
