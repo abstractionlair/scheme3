@@ -52,8 +52,18 @@ struct Object *create_symbol_object(struct Machine *machine, struct String str);
 struct Object *create_string_object(struct Machine *machine, struct String str);
 struct Object *create_integer_object(struct Machine *machine, int integer);
 struct Object *create_double_object(struct Machine *machine, double dbl);
+struct Object *create_pair_object(struct Machine *machine, struct Object *car,
+				struct Object *cdr);
+struct Object *create_error_object(struct Machine *machine);
+struct Object *create_env_object(struct Machine *machine);
+struct Object *create_builtin_form_object(struct Machine *machine,
+					struct BuiltinForm f);
+void destroy_object(struct Machine *machine, struct Object *obj);
+struct Object *car(struct Object *obj);
+struct Object *cdr(struct Object *obj);
+struct Object *cadr(struct Object *obj);
+struct Object *reverse_list(struct Machine *machine, struct Object *inList);
 bool obj_is_nil(struct Object * obj);
 struct Machine *create_machine();
-struct Object *eval(struct Machine *machine, struct Object *obj);
 
 #endif

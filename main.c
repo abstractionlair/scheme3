@@ -1,3 +1,4 @@
+#include "eval.h"
 #include "print.h"
 #include "read.h"
 #include "scheme.h"
