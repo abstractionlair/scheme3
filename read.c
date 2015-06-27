@@ -213,7 +213,10 @@ enum Type deduce_type(struct String word)
 		return TypeString;
 	}
 	else if (strchr("0123456789+-.", word.cstr[0])) {
-		if (strpbrk(word.cstr, ".eE")) {
+		if (!strpbrk(word.cstr, "01234567890")) {
+			/* "+", "-" should be symbols */
+			return TypeSymbol;
+		} else if (strpbrk(word.cstr, ".eE")) {
 			return TypeDouble;
 		} else {
 			return TypeInteger;

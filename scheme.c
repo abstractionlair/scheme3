@@ -4,12 +4,9 @@
 #include "read.h"
 #include "scheme.h"
 #include <assert.h>
-#include <ctype.h>
 #include <stdbool.h>
-#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 struct Object *alloc_object(struct Machine *machine)
 {
@@ -191,12 +188,28 @@ struct Object *quote(struct Machine *machine, struct Object *args)
 	return car(args);
 }
 
+struct Object *add_integer(struct Machine *machine, struct Object *args)
+{
+	int r = 0;
+	while (!obj_is_nil(args)) {
+		if (car(args)->type != TypeInteger) {
+			fprintf(stderr,
+				"The function add_integer can only add integers.");
+			return create_error_object(machine);
+		}
+		r += car(args)->integer;
+		args = cdr(args);
+	}
+	return create_integer_object(machine, r);
+}
+
 struct Machine *create_machine()
 {
 	struct Machine *m = malloc(sizeof(*m));
 	if (m) {
 		m->symbols = make_string_array();
 		m->rootEnv = create_env_object(m);
+		m->env = m->rootEnv;
 
 		struct String name;
 		struct Object *symbol;
@@ -217,7 +230,12 @@ struct Machine *create_machine()
 		funcObj = create_builtin_form_object(m, func);
 		env_update(&m->rootEnv->env, symbol->symbol, funcObj);
 
-
+		/* + */
+		name = string_from_cstring("+");
+		symbol = create_symbol_object(m, name);
+		func.f = add_integer;
+		funcObj = create_builtin_form_object(m, func);
+		env_update(&m->rootEnv->env, symbol->symbol, funcObj);
 	}
 	return m;
 }

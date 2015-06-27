@@ -17,7 +17,7 @@ struct Object *eval(struct Machine *machine, struct Object *obj)
 	case TypeBuiltinForm:
 		return obj;
 	case TypeSymbol:
-		nobj = env_get(&machine->rootEnv->env, obj->symbol);
+		nobj = env_get(&machine->env->env, obj->symbol);
 		if (nobj) {
 			return nobj;
 		} else {

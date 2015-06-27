@@ -43,6 +43,7 @@ struct Object {
 struct Machine {
 	struct StringArray symbols;
 	struct Object *rootEnv;
+	struct Object *env;
 };
 
 
