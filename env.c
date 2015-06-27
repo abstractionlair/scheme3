@@ -1,4 +1,5 @@
 #include "env.h"
+#include <stdio.h>
 #include <stdlib.h>
 
 struct Env make_env(void)
@@ -11,9 +12,11 @@ struct Object *env_get(struct Env *env, ptrdiff_t sym)
 {
 	/* NOTE: this one is recursive */
 	while (env) {
-		for (ptrdiff_t i = 0; i != env->count; ++i)
-			if (sym == env->map[i].key)
+		for (ptrdiff_t i = 0; i != env->count; ++i) {
+			if (sym == env->map[i].key) {
 				return env->map[i].value;
+			}
+		}
 		env = env->parent;
 	}
 	return 0;
@@ -22,23 +25,28 @@ struct Object *env_get(struct Env *env, ptrdiff_t sym)
 ptrdiff_t env_search(struct Env *env, ptrdiff_t sym)
 {
 	/* NOTE: this one is not recursive. */
-	for (ptrdiff_t i = 0; i != env->count; ++i)
-		if (sym == env->map[i].key)
+	for (ptrdiff_t i = 0; i != env->count; ++i) {
+		if (sym == env->map[i].key) {
 			return i;
+		}
+	}
 	return -1;
 }
 
 bool env_map_append(struct Env *env, struct EnvEntry ent)
 {
 	if (env->count >= env->size) {
-		size_t nsize = (env->size + 8) * sizeof(struct EnvEntry);
-		struct EnvEntry *nmap = realloc(env->map, nsize);
+		size_t nsize = (env->size + 8);
+		size_t nbytes = nsize * sizeof(struct EnvEntry);
+		struct EnvEntry *nmap = realloc(env->map, nbytes);
 		if (!nmap)
 			return false;
 		env->map = nmap;
 		env->size = nsize;
 	}
-	(env->map)[(env->count)++] = ent;
+	ptrdiff_t entryNum = env->count;
+	(env->map)[entryNum] = ent;
+	++(env->count);
 	return true;
 }
 

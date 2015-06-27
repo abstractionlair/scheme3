@@ -12,9 +12,8 @@ enum Type {
 	TypeDouble,
 	TypePair,
 	TypeEnv,
-	//TypeFunction,
-	//TypeForm,
 	TypeBuiltinForm,
+	TypeBuiltinFunc,
 	TypeError
 };
 
@@ -27,6 +26,10 @@ struct BuiltinForm {
 	builtinForm f;
 };
 
+struct BuiltinFunc {
+	builtinFunc f;
+};
+
 struct Object {
 	enum Type type;
 	union {
@@ -37,6 +40,7 @@ struct Object {
 		struct Pair pair;
 		struct Env env;
 		struct BuiltinForm builtinForm;
+		struct BuiltinFunc builtinFunc;
 	};
 };
 
@@ -59,6 +63,8 @@ struct Object *create_error_object(struct Machine *machine);
 struct Object *create_env_object(struct Machine *machine);
 struct Object *create_builtin_form_object(struct Machine *machine,
 					struct BuiltinForm f);
+struct Object *create_builtin_func_object(struct Machine *machine,
+					struct BuiltinFunc f);
 void destroy_object(struct Machine *machine, struct Object *obj);
 struct Object *car(struct Object *obj);
 struct Object *cdr(struct Object *obj);

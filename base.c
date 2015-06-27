@@ -75,8 +75,9 @@ int string_compare(struct String s1, struct String s2)
 bool string_array_append(struct StringArray *strs, struct String nstr)
 {
 	if (strs->count >= strs->size){
-		size_t nsize = (strs->size + 16) * sizeof(struct String);
-		struct String *nstrs = realloc(strs->strs, nsize);
+		size_t nsize = (strs->size + 16);
+		size_t nbytes = nsize * sizeof(struct String);
+		struct String *nstrs = realloc(strs->strs, nbytes);
 		if (!nstrs)
 			return false;
 		strs->strs = nstrs;

@@ -184,7 +184,7 @@ struct Object *read_list(struct Machine *machine, struct StringArray *words,
 {
 	struct Object *first = create_pair_object(machine, 0, 0);
 	if (!first)
-		return 0;
+		return first;
 	struct Object *into = first;
 	while (*pos < words->count) {
 		struct String word = words->strs[*pos];

@@ -1,4 +1,5 @@
 #include "base.h"
+#include "builtins.h"
 #include "env.h"
 #include "eval.h"
 #include "read.h"
@@ -105,6 +106,17 @@ struct Object *create_builtin_form_object(struct Machine *machine,
 	return obj;
 }
 
+struct Object *create_builtin_func_object(struct Machine *machine,
+					struct BuiltinFunc f)
+{
+	struct Object *obj = alloc_object(machine);
+	if (obj) {
+		obj->type = TypeBuiltinFunc;
+		obj->builtinFunc = f;
+	}
+	return obj;
+}
+
 void destroy_object(struct Machine *machine, struct Object *obj)
 {
 	/* NOTE: we want to free things that are owned by the object.
@@ -123,6 +135,7 @@ void destroy_object(struct Machine *machine, struct Object *obj)
 	case TypeEnv:
 	case TypeError:
 	case TypeBuiltinForm:
+	case TypeBuiltinFunc:
 		free(obj);
 		return;
 	}
@@ -161,224 +174,22 @@ bool obj_is_nil(struct Object * obj)
 	return obj && obj->type == TypePair && !obj->pair.car && !obj->pair.cdr;
 }
 
-struct Object *define(struct Machine *machine, struct Object *args)
+bool machine_register_builtin_form(struct Machine *m, char *cname, builtinForm f)
 {
-	if (args->type == TypePair) {
-		Object *key = car(args);
-		if (key->type != TypeSymbol) {
-			fprintf(stderr,
-				"The key for a define must be a symbol.\n");
-			return create_error_object(machine);
-		}
-		if (cdr(args)->type != TypePair) {
-			fprintf(stderr,
-				"Don't understand second argument for define.\n");
-			return create_error_object(machine);
-		}
-		Object *value = eval(machine, cadr(args));
-		env_update(&machine->rootEnv->env, key->symbol, value);
-		return create_pair_object(machine, 0, 0);
-	}
-	fprintf(stderr, "Don't know how to define what you asked for\n");
-	return create_error_object(machine);
+	struct String name = string_from_cstring(cname);
+	struct Object *symbol = create_symbol_object(m, name);
+	struct BuiltinForm func = {.f = f};
+	struct Object *funcObj = create_builtin_form_object(m, func);
+	return env_update(&m->rootEnv->env, symbol->symbol, funcObj);
 }
 
-struct Object *quote(struct Machine *machine, struct Object *args)
+bool machine_register_builtin_func(struct Machine *m, char *cname, builtinFunc f)
 {
-	return car(args);
-}
-
-struct Object *sum(struct Machine *machine, struct Object *args)
-{
-	struct Object *r = 0;
-	int integer;
-	double dbl;
-	while (!obj_is_nil(args)) {
-		struct Object *earg = eval(machine, car(args));
-		switch (earg->type) {
-		case TypeInteger:
-			integer = earg->integer;
-			if (!r) {
-				r = create_integer_object(machine, integer);
-			} else if (r->type == TypeInteger) {
-				r->integer += integer;
-			} else if (r->type == TypeDouble) {
-				r->dbl += integer;
-			} else {
-				assert(0);
-			}
-			break;
-		case TypeDouble:
-			dbl = earg->dbl;
-			if (!r) {
-				r = create_double_object(machine, dbl);
-			} else if (r->type == TypeInteger) {
-				r->dbl = r->integer + dbl;
-				r->type = TypeDouble;
-			} else if (r->type == TypeDouble) {
-				r->dbl += dbl;
-			} else {
-				assert(0);
-			}
-			break;
-		default:
-			assert(0);
-		}
-		args = cdr(args);
-	}
-	return r;
-}
-
-struct Object *prod(struct Machine *machine, struct Object *args)
-{
-	struct Object *r = 0;
-	int integer;
-	double dbl;
-	while (!obj_is_nil(args)) {
-		struct Object *earg = eval(machine, car(args));
-		switch (earg->type) {
-		case TypeInteger:
-			integer = earg->integer;
-			if (!r) {
-				r = create_integer_object(machine, integer);
-			} else if (r->type == TypeInteger) {
-				r->integer *= integer;
-			} else if (r->type == TypeDouble) {
-				r->dbl *= integer;
-			} else {
-				assert(0);
-			}
-			break;
-		case TypeDouble:
-			dbl = earg->dbl;
-			if (!r) {
-				r = create_double_object(machine, dbl);
-			} else if (r->type == TypeInteger) {
-				r->dbl = r->integer * dbl ;
-				r->type = TypeDouble;
-			} else if (r->type == TypeDouble) {
-				r->dbl *= dbl;
-			} else {
-				assert(0);
-			}
-			break;
-		default:
-			assert(0);
-		}
-		args = cdr(args);
-	}
-	return r;
-}
-
-struct Object *subtract(struct Machine *machine, struct Object *args)
-{
-	struct Object *r = 0;
-	int integer;
-	double dbl;
-	int count = 0;
-	while (!obj_is_nil(args)) {
-		struct Object *earg = eval(machine, car(args));
-		++count;
-		switch (earg->type) {
-		case TypeInteger:
-			integer = earg->integer;
-			if (!r) {
-				r = create_integer_object(machine, integer);
-			} else if (r->type == TypeInteger) {
-				r->integer -= integer;
-			} else if (r->type == TypeDouble) {
-				r->dbl -= integer;
-			} else {
-				assert(0);
-			}
-			break;
-		case TypeDouble:
-			dbl = earg->dbl;
-			if (!r) {
-				r = create_double_object(machine, dbl);
-			} else if (r->type == TypeInteger) {
-				r->dbl = r->integer - dbl ;
-				r->type = TypeDouble;
-			} else if (r->type == TypeDouble) {
-				r->dbl -= dbl;
-			} else {
-				assert(0);
-			}
-			break;
-		default:
-			assert(0);
-		}
-		args = cdr(args);
-	}
-	if (count == 1) {
-		switch (r->type) {
-		case TypeInteger:
-			r->integer = -r->integer;
-			break;
-		case TypeDouble:
-			r->dbl = -r->dbl;
-			break;
-		default:
-			assert(0);
-		}
-	}
-	return r;
-}
-
-struct Object *divide(struct Machine *machine, struct Object *args)
-{
-	struct Object *r = 0;
-	int integer;
-	double dbl;
-	int count = 0;
-	while (!obj_is_nil(args)) {
-		struct Object *earg = eval(machine, car(args));
-		++count;
-		switch (earg->type) {
-		case TypeInteger:
-			integer = earg->integer;
-			if (!r) {
-				r = create_integer_object(machine, integer);
-			} else if (r->type == TypeInteger) {
-				r->integer /= integer;
-			} else if (r->type == TypeDouble) {
-				r->dbl /= integer;
-			} else {
-				assert(0);
-			}
-			break;
-		case TypeDouble:
-			dbl = earg->dbl;
-			if (!r) {
-				r = create_double_object(machine, dbl);
-			} else if (r->type == TypeInteger) {
-				r->dbl = r->integer / dbl ;
-				r->type = TypeDouble;
-			} else if (r->type == TypeDouble) {
-				r->dbl /= dbl;
-			} else {
-				assert(0);
-			}
-			break;
-		default:
-			assert(0);
-		}
-		args = cdr(args);
-	}
-	if (count == 1) {
-		switch (r->type) {
-		case TypeInteger:
-			r->dbl = 1.0 / r->integer;
-			r->type = TypeDouble;
-			break;
-		case TypeDouble:
-			r->dbl = 1.0 / r->dbl;
-			break;
-		default:
-			assert(0);
-		}
-	}
-	return r;
+	struct String name = string_from_cstring(cname);
+	struct Object *symbol = create_symbol_object(m, name);
+	struct BuiltinFunc func = {.f = f};
+	struct Object *funcObj = create_builtin_func_object(m, func);
+	return env_update(&m->rootEnv->env, symbol->symbol, funcObj);
 }
 
 struct Machine *create_machine()
@@ -389,52 +200,17 @@ struct Machine *create_machine()
 		m->rootEnv = create_env_object(m);
 		m->env = m->rootEnv;
 
-		struct String name;
-		struct Object *symbol;
-		struct BuiltinForm func;
-		struct Object *funcObj;
+		machine_register_builtin_form(m, "define", define);
+		machine_register_builtin_form(m, "quote", quote);
 
-		/* define */
-		name = string_from_cstring("define");
-		symbol = create_symbol_object(m, name);
-		func.f = define;
-		funcObj = create_builtin_form_object(m, func);
-		env_update(&m->rootEnv->env, symbol->symbol, funcObj);
-
-		/* quote */
-		name = string_from_cstring("quote");
-		symbol = create_symbol_object(m, name);
-		func.f = quote;
-		funcObj = create_builtin_form_object(m, func);
-		env_update(&m->rootEnv->env, symbol->symbol, funcObj);
-
-		/* + */
-		name = string_from_cstring("+");
-		symbol = create_symbol_object(m, name);
-		func.f = sum;
-		funcObj = create_builtin_form_object(m, func);
-		env_update(&m->rootEnv->env, symbol->symbol, funcObj);
-
-		/* * */
-		name = string_from_cstring("*");
-		symbol = create_symbol_object(m, name);
-		func.f = prod;
-		funcObj = create_builtin_form_object(m, func);
-		env_update(&m->rootEnv->env, symbol->symbol, funcObj);
-
-		/* - */
-		name = string_from_cstring("-");
-		symbol = create_symbol_object(m, name);
-		func.f = subtract;
-		funcObj = create_builtin_form_object(m, func);
-		env_update(&m->rootEnv->env, symbol->symbol, funcObj);
-
-		/* / */
-		name = string_from_cstring("/");
-		symbol = create_symbol_object(m, name);
-		func.f = divide;
-		funcObj = create_builtin_form_object(m, func);
-		env_update(&m->rootEnv->env, symbol->symbol, funcObj);
+		machine_register_builtin_func(m, "eval", meval);
+		machine_register_builtin_func(m, "car", mcar);
+		machine_register_builtin_func(m, "cdr", mcdr);
+		machine_register_builtin_func(m, "cadr", mcadr);
+		machine_register_builtin_func(m, "+", sum);
+		machine_register_builtin_func(m, "*", prod);
+		machine_register_builtin_func(m, "-", subtract);
+		machine_register_builtin_func(m, "/", divide);
 	}
 	return m;
 }

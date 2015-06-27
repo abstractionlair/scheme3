@@ -10,10 +10,12 @@ int main(int argc, char *argv[])
 	while (1) {
 		struct StringArray words = read_expression(stdin);
 		struct Object *obj = read(machine, &words);
+		struct Object *nobj = eval(machine, obj);
 
+		printf("main: ");
 		obj_print(machine, obj);
-		printf("\n-> ");
-		obj_print(machine, eval(machine, obj));
+		printf(" -> ");
+		obj_print(machine, nobj);
 		printf("\n");
 	}
 	return 0;
