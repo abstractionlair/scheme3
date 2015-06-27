@@ -188,19 +188,197 @@ struct Object *quote(struct Machine *machine, struct Object *args)
 	return car(args);
 }
 
-struct Object *add_integer(struct Machine *machine, struct Object *args)
+struct Object *sum(struct Machine *machine, struct Object *args)
 {
-	int r = 0;
+	struct Object *r = 0;
+	int integer;
+	double dbl;
 	while (!obj_is_nil(args)) {
-		if (car(args)->type != TypeInteger) {
-			fprintf(stderr,
-				"The function add_integer can only add integers.");
-			return create_error_object(machine);
+		struct Object *earg = eval(machine, car(args));
+		switch (earg->type) {
+		case TypeInteger:
+			integer = earg->integer;
+			if (!r) {
+				r = create_integer_object(machine, integer);
+			} else if (r->type == TypeInteger) {
+				r->integer += integer;
+			} else if (r->type == TypeDouble) {
+				r->dbl += integer;
+			} else {
+				assert(0);
+			}
+			break;
+		case TypeDouble:
+			dbl = earg->dbl;
+			if (!r) {
+				r = create_double_object(machine, dbl);
+			} else if (r->type == TypeInteger) {
+				r->dbl = r->integer + dbl;
+				r->type = TypeDouble;
+			} else if (r->type == TypeDouble) {
+				r->dbl += dbl;
+			} else {
+				assert(0);
+			}
+			break;
+		default:
+			assert(0);
 		}
-		r += car(args)->integer;
 		args = cdr(args);
 	}
-	return create_integer_object(machine, r);
+	return r;
+}
+
+struct Object *prod(struct Machine *machine, struct Object *args)
+{
+	struct Object *r = 0;
+	int integer;
+	double dbl;
+	while (!obj_is_nil(args)) {
+		struct Object *earg = eval(machine, car(args));
+		switch (earg->type) {
+		case TypeInteger:
+			integer = earg->integer;
+			if (!r) {
+				r = create_integer_object(machine, integer);
+			} else if (r->type == TypeInteger) {
+				r->integer *= integer;
+			} else if (r->type == TypeDouble) {
+				r->dbl *= integer;
+			} else {
+				assert(0);
+			}
+			break;
+		case TypeDouble:
+			dbl = earg->dbl;
+			if (!r) {
+				r = create_double_object(machine, dbl);
+			} else if (r->type == TypeInteger) {
+				r->dbl = r->integer * dbl ;
+				r->type = TypeDouble;
+			} else if (r->type == TypeDouble) {
+				r->dbl *= dbl;
+			} else {
+				assert(0);
+			}
+			break;
+		default:
+			assert(0);
+		}
+		args = cdr(args);
+	}
+	return r;
+}
+
+struct Object *subtract(struct Machine *machine, struct Object *args)
+{
+	struct Object *r = 0;
+	int integer;
+	double dbl;
+	int count = 0;
+	while (!obj_is_nil(args)) {
+		struct Object *earg = eval(machine, car(args));
+		++count;
+		switch (earg->type) {
+		case TypeInteger:
+			integer = earg->integer;
+			if (!r) {
+				r = create_integer_object(machine, integer);
+			} else if (r->type == TypeInteger) {
+				r->integer -= integer;
+			} else if (r->type == TypeDouble) {
+				r->dbl -= integer;
+			} else {
+				assert(0);
+			}
+			break;
+		case TypeDouble:
+			dbl = earg->dbl;
+			if (!r) {
+				r = create_double_object(machine, dbl);
+			} else if (r->type == TypeInteger) {
+				r->dbl = r->integer - dbl ;
+				r->type = TypeDouble;
+			} else if (r->type == TypeDouble) {
+				r->dbl -= dbl;
+			} else {
+				assert(0);
+			}
+			break;
+		default:
+			assert(0);
+		}
+		args = cdr(args);
+	}
+	if (count == 1) {
+		switch (r->type) {
+		case TypeInteger:
+			r->integer = -r->integer;
+			break;
+		case TypeDouble:
+			r->dbl = -r->dbl;
+			break;
+		default:
+			assert(0);
+		}
+	}
+	return r;
+}
+
+struct Object *divide(struct Machine *machine, struct Object *args)
+{
+	struct Object *r = 0;
+	int integer;
+	double dbl;
+	int count = 0;
+	while (!obj_is_nil(args)) {
+		struct Object *earg = eval(machine, car(args));
+		++count;
+		switch (earg->type) {
+		case TypeInteger:
+			integer = earg->integer;
+			if (!r) {
+				r = create_integer_object(machine, integer);
+			} else if (r->type == TypeInteger) {
+				r->integer /= integer;
+			} else if (r->type == TypeDouble) {
+				r->dbl /= integer;
+			} else {
+				assert(0);
+			}
+			break;
+		case TypeDouble:
+			dbl = earg->dbl;
+			if (!r) {
+				r = create_double_object(machine, dbl);
+			} else if (r->type == TypeInteger) {
+				r->dbl = r->integer / dbl ;
+				r->type = TypeDouble;
+			} else if (r->type == TypeDouble) {
+				r->dbl /= dbl;
+			} else {
+				assert(0);
+			}
+			break;
+		default:
+			assert(0);
+		}
+		args = cdr(args);
+	}
+	if (count == 1) {
+		switch (r->type) {
+		case TypeInteger:
+			r->dbl = 1.0 / r->integer;
+			r->type = TypeDouble;
+			break;
+		case TypeDouble:
+			r->dbl = 1.0 / r->dbl;
+			break;
+		default:
+			assert(0);
+		}
+	}
+	return r;
 }
 
 struct Machine *create_machine()
@@ -233,7 +411,28 @@ struct Machine *create_machine()
 		/* + */
 		name = string_from_cstring("+");
 		symbol = create_symbol_object(m, name);
-		func.f = add_integer;
+		func.f = sum;
+		funcObj = create_builtin_form_object(m, func);
+		env_update(&m->rootEnv->env, symbol->symbol, funcObj);
+
+		/* * */
+		name = string_from_cstring("*");
+		symbol = create_symbol_object(m, name);
+		func.f = prod;
+		funcObj = create_builtin_form_object(m, func);
+		env_update(&m->rootEnv->env, symbol->symbol, funcObj);
+
+		/* - */
+		name = string_from_cstring("-");
+		symbol = create_symbol_object(m, name);
+		func.f = subtract;
+		funcObj = create_builtin_form_object(m, func);
+		env_update(&m->rootEnv->env, symbol->symbol, funcObj);
+
+		/* / */
+		name = string_from_cstring("/");
+		symbol = create_symbol_object(m, name);
+		func.f = divide;
 		funcObj = create_builtin_form_object(m, func);
 		env_update(&m->rootEnv->env, symbol->symbol, funcObj);
 	}
