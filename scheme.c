@@ -207,6 +207,7 @@ struct Machine *create_machine()
 		machine_register_builtin_func(m, "car", mcar);
 		machine_register_builtin_func(m, "cdr", mcdr);
 		machine_register_builtin_func(m, "cadr", mcadr);
+		machine_register_builtin_func(m, "cons", cons);
 		machine_register_builtin_func(m, "+", sum);
 		machine_register_builtin_func(m, "*", prod);
 		machine_register_builtin_func(m, "-", subtract);

@@ -35,7 +35,7 @@ bool is_filler(char c)
 
 bool is_self_delimited(char c)
 {
-	return c == ')' || c == '(';
+	return c == ')' || c == '(' || c == '\'';
 }
 
 bool is_delimiter(char c)
@@ -65,13 +65,71 @@ bool is_list_end(struct String word)
 	return word.count == 2 && word.cstr[0] == ')';
 }
 
-struct String read_word(FILE *stream)
+int file_getc(void *context)
+{
+	struct FileGetCharContext *ctx = (struct FileGetCharContext*)context;
+	return getc(ctx->stream);
+}
+
+int file_ungetc(int c, void *context)
+{
+	struct FileGetCharContext *ctx = (struct FileGetCharContext*)context;
+	return ungetc(c, ctx->stream);
+}
+
+void readline_init(void *context, char *prompt)
+{
+	struct ReadlineGetCharContext *ctx =
+		(struct ReadlineGetCharContext*)context;
+	ctx->line = 0;
+	ctx->len = 0;
+	ctx->pos = 0;
+	ctx->haveUnget = false;
+	ctx->prompt = prompt;
+}
+
+int readline_getc(void *context)
+{
+	struct ReadlineGetCharContext *ctx =
+		(struct ReadlineGetCharContext*)context;
+	if (ctx->haveUnget) {
+		ctx->haveUnget = false;
+		return ctx->unget;
+	}
+	while (ctx->line == 0 || ctx->pos >= ctx->len) {
+		if (ctx->line)
+			free(ctx->line);
+		ctx->len = 0;
+		ctx->pos = 0;
+		ctx->line = readline(ctx->prompt);
+		if (!ctx->line)
+			return EOF;
+		add_history(ctx->line);
+		ctx->len = strlen(ctx->line);
+	}
+	return ctx->line[(ctx->pos)++];
+}
+
+int readline_ungetc(int c, void *context)
+{
+	struct ReadlineGetCharContext *ctx =
+		(struct ReadlineGetCharContext*)context;
+	if (ctx->haveUnget) {
+		return EOF;
+	} else {
+		ctx->haveUnget = true;
+		ctx->unget = c;
+		return c;
+	}
+}
+
+struct String read_word(getcFunc getcFunc, ungetcFunc ungetcFunc, void *context)
 {
 	enum { normal, quote, quoteEscape } mode = normal;
 
 	struct String str = make_string();
 	while (1) {
-		int c = getc(stream);
+		int c = getcFunc(context);
 		if (c == EOF)
 			goto out_str;
 		switch (mode) {
@@ -82,12 +140,12 @@ struct String read_word(FILE *stream)
 			// Ensure '(' and ')' form their own words.
 			if (is_self_delimited(c)) {
 				if (str.count)
-					if (ungetc(c, stream) == EOF)
+					if (ungetcFunc(c, context) == EOF)
 						goto out_no_str;
 					else
 						goto out_str;
 				else {
-					string_append(&str, c);;
+					string_append(&str, c);
 					goto out_str;
 				}
 			}
@@ -103,7 +161,7 @@ struct String read_word(FILE *stream)
 			if ((char)c == '\\') {
 				mode = quoteEscape;
 			} else {
-				string_append(&str, c);;
+				string_append(&str, c);
 				if (is_quote_end(c))
 					mode = normal;
 			}
@@ -123,7 +181,8 @@ out_no_str:
 }
 
 
-struct StringArray read_expression(FILE *stream)
+struct StringArray read_expression(getcFunc getcFunc, ungetcFunc ungetcFunc,
+				void *context)
 {
 	/*
 	 * Reads text of a complete expression.
@@ -137,7 +196,8 @@ struct StringArray read_expression(FILE *stream)
 	while (true) {
 		if (words.count && countOpen == countClose)
 			return words;
-		struct String nextWord = read_word(stream);
+		struct String nextWord = read_word(getcFunc,
+						ungetcFunc, context);
 		if (!nextWord.cstr)
 			return make_string_array();
 		if (is_list_start(nextWord))
@@ -154,7 +214,7 @@ struct Object *read_list(struct Machine *machine, struct StringArray *words,
 
 struct Object *read_non_list(struct Machine *machine, struct String word);
 
-struct Object *read(struct Machine *machine, struct StringArray *words)
+struct Object *read_scheme(struct Machine *machine, struct StringArray *words)
 {
 	/*
 	 * Create a scheme object from a list of word strings.

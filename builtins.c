@@ -22,6 +22,14 @@ struct Object *mcadr(struct Machine *m, struct Object *args)
 	return car(cdr(arg0));
 }
 
+struct Object *cons(struct Machine *m, struct Object *args)
+{
+	struct Object *arg0 = car(args);
+	struct Object *arg1 = cadr(args);
+	return create_pair_object(m, arg0, arg1);
+}
+
+
 struct Object *meval(struct Machine *m, struct Object *args)
 {
 	struct Object *arg0 = car(args);
@@ -200,7 +208,8 @@ struct Object *divide(struct Machine *machine, struct Object *args)
 	double dbl;
 	int count = 0;
 	while (!obj_is_nil(args)) {
-		struct Object *earg = car(args);		++count;
+		struct Object *earg = car(args);
+		++count;
 		switch (earg->type) {
 		case TypeInteger:
 			integer = earg->integer;

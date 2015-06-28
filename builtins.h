@@ -6,6 +6,7 @@
 struct Object *mcar(struct Machine *m, struct Object *args);
 struct Object *mcdr(struct Machine *m, struct Object *args);
 struct Object *mcadr(struct Machine *m, struct Object *args);
+struct Object *cons(struct Machine *m, struct Object *args);
 struct Object *meval(struct Machine *m, struct Object *args);
 struct Object *quote(struct Machine *machine, struct Object *args);
 struct Object *define(struct Machine *machine, struct Object *args);

@@ -21,9 +21,7 @@ void obj_print_dotted(struct Machine *machine, struct Object *obj)
 			printf("%f", obj->dbl);
 			return;
 		case TypePair:
-			if (!obj->pair.car && !obj->pair.cdr)
-				printf("nil");
-			else {
+			if (obj->pair.car && !obj->pair.cdr) {
 				printf("(");
 				if (!obj->pair.car)
 					printf("null");
@@ -85,12 +83,13 @@ void obj_print_inner(struct Machine *machine, struct Object *obj)
 			return;
 		case TypePair:
 			/* Car and Cdr are null */
-			if (!obj->pair.car && !obj->pair.cdr) {
-				printf("nil) ");
+			//if (!obj->pair.car && !obj->pair.cdr) {
+			if (obj_is_nil(obj)) {
+				printf(") ");
 				return;
 			}
-			/* Only car is null -> unexpected so fallback to dotted. */
 			if (!obj->pair.car) {
+				/* Unexpected. Fallback to dotted. */
 				obj_print_dotted(machine, obj);
 				return;
 			}

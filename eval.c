@@ -65,7 +65,8 @@ struct Object *eval_pair(struct Machine *machine, struct Object *obj)
 		if (ecar->type == TypeBuiltinForm) {
 			nobj = ecar->builtinForm.f(machine, obj->pair.cdr);
 		} else if (ecar->type == TypeBuiltinFunc) {
-			struct Object *eargs = eval_list_items(machine, obj->pair.cdr);
+			struct Object *eargs = eval_list_items(machine,
+							obj->pair.cdr);
 			nobj = ecar->builtinFunc.f(machine, eargs);
 		} else {
 			fprintf(stderr, "Function calls not implemented yet\n");
