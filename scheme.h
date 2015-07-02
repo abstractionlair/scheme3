@@ -50,9 +50,9 @@ struct Machine {
 	struct Object *env;
 };
 
+
 struct Object *create_pair_object(struct Machine *machine, struct Object *car,
 				struct Object *cdr);
-struct Object *create_empty_pair_object(struct Machine *machine);
 struct Object *create_symbol_object(struct Machine *machine, struct String str);
 struct Object *create_string_object(struct Machine *machine, struct String str);
 struct Object *create_integer_object(struct Machine *machine, int integer);
