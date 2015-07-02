@@ -77,11 +77,6 @@ struct Object *create_pair_object(struct Machine *machine, struct Object *car,
 	return obj;
 }
 
-struct Object *create_empty_pair_object(struct Machine *machine)
-{
-	return create_pair_object(machine, 0, 0);
-}
-
 struct Object *create_error_object(struct Machine *machine)
 {
 	struct Object *obj = alloc_object(machine);
