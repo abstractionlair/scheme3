@@ -33,9 +33,14 @@ bool is_filler(char c)
 	return isspace(c);
 }
 
-bool is_self_delimited(char c)
+bool is_quote_op_char(char c)
 {
-	return c == ')' || c == '(' || c == '\'';
+	return '\'' ;
+}
+
+bool is_list_start_end(char c)
+{
+	return c == ')' || c == ']' || c == '(' || c == '[';
 }
 
 bool is_delimiter(char c)
@@ -53,16 +58,22 @@ bool is_quote_end(char c)
 	return c == '"';
 }
 
+bool is_quote_operator(struct String word)
+{
+	/* NOTE: '\0' included in count. */
+	return word.count == 2 && word.cstr[0] == '\'';
+}
+
 bool is_list_start(struct String word)
 {
 	/* NOTE: '\0' included in count. */
-	return word.count == 2 && word.cstr[0] == '(';
+	return word.count == 2 && (word.cstr[0] == '(' || word.cstr[0] == '[');
 }
 
 bool is_list_end(struct String word)
 {
 	/* NOTE: '\0' included in count. */
-	return word.count == 2 && word.cstr[0] == ')';
+	return word.count == 2 && (word.cstr[0] == ')' || word.cstr[0] == ']');
 }
 
 int file_getc(void *context)
@@ -134,11 +145,9 @@ struct String read_word(getcFunc getcFunc, ungetcFunc ungetcFunc, void *context)
 			goto out_str;
 		switch (mode) {
 		case normal:
-			// Skip space at the beginning
 			if (!str.count && is_filler(c))
 				continue;
-			// Ensure '(' and ')' form their own words.
-			if (is_self_delimited(c)) {
+			if (is_list_start_end(c)) {
 				if (str.count)
 					if (ungetcFunc(c, context) == EOF)
 						goto out_no_str;
@@ -149,9 +158,13 @@ struct String read_word(getcFunc getcFunc, ungetcFunc ungetcFunc, void *context)
 					goto out_str;
 				}
 			}
+			if (is_quote_op_char(c)) {
+				string_append(&str, c);
+				goto out_str;
+			}
 			if (is_delimiter(c))
 				goto out_str;
-			string_append(&str, c);;
+			string_append(&str, c);
 			if (is_quote_start(c))
 				mode = quote;
 			else if (is_delimiter(c))
@@ -192,9 +205,9 @@ struct StringArray read_expression(getcFunc getcFunc, ungetcFunc ungetcFunc,
 	int countOpen = 0;
 	int countClose = 0;
 	struct StringArray words = make_string_array();
-
+	bool haveSomething = false;
 	while (true) {
-		if (words.count && countOpen == countClose)
+		if (haveSomething && countOpen == countClose)
 			return words;
 		struct String nextWord = read_word(getcFunc,
 						ungetcFunc, context);
@@ -206,6 +219,8 @@ struct StringArray read_expression(getcFunc getcFunc, ungetcFunc ungetcFunc,
 			++countClose;
 		if (!string_array_append(&words, nextWord))
 			return make_string_array();
+		if (!is_quote_operator(nextWord))
+			haveSomething = true;
 	}
 }
 
@@ -213,59 +228,6 @@ struct Object *read_list(struct Machine *machine, struct StringArray *words,
 			ptrdiff_t *pos);
 
 struct Object *read_non_list(struct Machine *machine, struct String word);
-
-struct Object *read_scheme(struct Machine *machine, struct StringArray *words)
-{
-	/*
-	 * Create a scheme object from a list of word strings.
-	 * Takes ownership of the words and clears the array.
-	 */
-
-	if (!words->count) {
-		free_string_array_shallow(words);
-		return 0;
-	}
-	struct String word = words->strs[0];
-	if (is_list_start(word)) {
-		free(word.cstr);
-		ptrdiff_t pos = 1;
-		struct Object *obj = read_list(machine, words, &pos);
-		free_string_array_shallow(words);
-		return obj;
-	}
-	else {
-		free_string_array_shallow(words);
-		return read_non_list(machine, word);
-	}
-}
-
-struct Object *read_list(struct Machine *machine, struct StringArray *words,
-			ptrdiff_t *pos)
-{
-	struct Object *first = create_pair_object(machine, 0, 0);
-	if (!first)
-		return first;
-	struct Object *into = first;
-	while (*pos < words->count) {
-		struct String word = words->strs[*pos];
-		++*pos;
-		if (is_list_end(word)) {
-			free(word.cstr);
-			return first;
-		} else if (is_list_start(word)) {
-			free(word.cstr);
-			into->pair.car = read_list(machine, words, pos);
-		} else {
-			into->pair.car = read_non_list(machine, word);
-		}
-		into->pair.cdr = create_pair_object(machine, 0, 0);
-		if (!into->pair.cdr)
-			return 0;
-		into = into->pair.cdr;
-	}
-	assert(0);
-	return 0;
-}
 
 enum Type deduce_type(struct String word)
 {
@@ -283,6 +245,85 @@ enum Type deduce_type(struct String word)
 		}
 	}
 	return TypeSymbol;
+}
+
+struct Object *quoteObj(struct Machine *m, struct Object *obj)
+{
+	struct String quoteStr = string_from_cstring("quote");
+	struct Object *quote = create_symbol_object(m, quoteStr);
+	struct Object *empty = create_empty_pair_object(m);
+	struct Object *r;
+	r = create_pair_object(m, obj, empty);
+	r = create_pair_object(m, quote, r);
+	return r;
+}
+
+struct Object *read_scheme(struct Machine *machine, struct StringArray *words)
+{
+	/*
+	 * Create a scheme object from a list of word strings.
+	 * Takes ownership of the words and clears the array.
+	 */
+
+	if (!words->count) {
+		free_string_array_shallow(words);
+		return 0;
+	}
+	ptrdiff_t pos = 0;
+	bool quoteMode = false;
+	struct String word;
+	while (1) {
+		word = words->strs[pos];
+		++pos;
+		if (is_quote_operator(word)) {
+			quoteMode = true;
+		} else if (is_list_start(word)) {
+			free(word.cstr);
+			struct Object *obj = read_list(machine, words, &pos);
+			free_string_array_shallow(words);
+			if (quoteMode)
+				return quoteObj(machine, obj);
+			else
+				return obj;
+		}
+		else {
+			free_string_array_shallow(words);
+			if (quoteMode)
+				return quoteObj(machine,read_non_list(machine, word));
+			else
+				return read_non_list(machine, word);
+		}
+	}
+}
+
+struct Object *read_list(struct Machine *machine, struct StringArray *words,
+			ptrdiff_t *pos)
+{
+	struct Object *first = create_pair_object(machine, 0, 0);
+	if (!first)
+		return first;
+	struct Object *into = first;
+	while (*pos < words->count) {
+		struct String word = words->strs[*pos];
+		if (is_list_end(word)) {
+			++*pos;
+			free(word.cstr);
+			return first;
+		} else if (is_list_start(word)) {
+			++*pos;
+			free(word.cstr);
+			into->pair.car = read_list(machine, words, pos);
+		} else {
+			++*pos;
+			into->pair.car = read_non_list(machine, word);
+		}
+		into->pair.cdr = create_pair_object(machine, 0, 0);
+		if (!into->pair.cdr)
+			return 0;
+		into = into->pair.cdr;
+	}
+	assert(0);
+	return 0;
 }
 
 struct Object *read_non_list(struct Machine *machine, struct String word)
@@ -306,3 +347,11 @@ struct Object *read_non_list(struct Machine *machine, struct String word)
 	}
 	return 0;
 }
+
+
+
+
+
+
+
+
