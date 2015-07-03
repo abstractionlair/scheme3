@@ -101,9 +101,10 @@ int readline_getc(void *context)
 			free(ctx->line);
 		ctx->len = 0;
 		ctx->pos = 0;
-		ctx->line = readline(ctx->prompt);
-		if (!ctx->line)
+		char *nline = readline(ctx->prompt);
+		if (!nline)
 			return EOF;
+		ctx->line = strcat(strcpy(malloc(strlen(nline)+2), nline), "\n");
 		add_history(ctx->line);
 		ctx->len = strlen(ctx->line);
 	}

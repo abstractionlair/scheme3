@@ -1,4 +1,5 @@
 #include "env.h"
+#include "scheme.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -17,7 +18,10 @@ struct Object *env_get(struct Env *env, ptrdiff_t sym)
 				return env->map[i].value;
 			}
 		}
-		env = env->parent;
+		if (env->parent)
+			env = &env->parent->env;
+		else
+			env = 0;
 	}
 	return 0;
 }

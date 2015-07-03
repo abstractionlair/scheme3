@@ -14,7 +14,7 @@ struct Env {
 	struct EnvEntry *map;
 	size_t count;
 	size_t size;
-	struct Env *parent;
+	struct Object *parent;
 };
 
 struct Env make_env(void);

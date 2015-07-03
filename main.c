@@ -20,7 +20,7 @@ int main(int argc, char *argv[])
 		struct Object *obj = read_scheme(machine, &words);
 		struct Object *nobj = eval(machine, obj);
 		obj_print(machine, nobj);
-		printf("\n");
+		printf("\n\n");
 	}
 	return 0;
 }
