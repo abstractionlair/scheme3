@@ -14,7 +14,8 @@ enum Type {
 	TypeEnv,
 	TypeBuiltinForm,
 	TypeBuiltinFunc,
-	TypeError
+	TypeError,
+	TypeClosure
 };
 
 struct Pair {
@@ -30,6 +31,12 @@ struct BuiltinFunc {
 	builtinFunc f;
 };
 
+struct Closure {
+	struct Object *body;
+	struct Object *args;
+	struct Object *env;
+};
+
 struct Object {
 	enum Type type;
 	union {
@@ -41,6 +48,7 @@ struct Object {
 		struct Env env;
 		struct BuiltinForm builtinForm;
 		struct BuiltinFunc builtinFunc;
+		struct Closure closure;
 	};
 };
 
@@ -61,6 +69,10 @@ struct Object *create_pair_object(struct Machine *machine, struct Object *car,
 				struct Object *cdr);
 struct Object *create_error_object(struct Machine *machine);
 struct Object *create_env_object(struct Machine *machine);
+struct Object *create_closure_object(struct Machine *machine,
+				struct Object *args,
+				struct Object *body,
+				struct Object *env);
 struct Object *create_builtin_form_object(struct Machine *machine,
 					struct BuiltinForm f);
 struct Object *create_builtin_func_object(struct Machine *machine,

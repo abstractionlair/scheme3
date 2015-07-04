@@ -95,6 +95,19 @@ struct Object *create_env_object(struct Machine *machine)
 	return obj;
 }
 
+struct Object *create_closure_object(struct Machine *machine,
+				struct Object *args,
+				struct Object *body,
+				struct Object *env)
+{
+	struct Object *obj = alloc_object(machine);
+	obj->type = TypeClosure;
+	obj->closure.args = args;
+	obj->closure.body = body;
+	obj->closure.env = env;
+	return obj;
+}
+
 struct Object *create_builtin_form_object(struct Machine *machine,
 					struct BuiltinForm f)
 {
@@ -136,6 +149,7 @@ void destroy_object(struct Machine *machine, struct Object *obj)
 	case TypeError:
 	case TypeBuiltinForm:
 	case TypeBuiltinFunc:
+	case TypeClosure:
 		free(obj);
 		return;
 	}
@@ -202,6 +216,7 @@ struct Machine *create_machine()
 
 		machine_register_builtin_form(m, "define", define);
 		machine_register_builtin_form(m, "quote", quote);
+		machine_register_builtin_form(m, "lambda", lambda);
 
 		machine_register_builtin_func(m, "eval", meval);
 		machine_register_builtin_func(m, "car", mcar);

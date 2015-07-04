@@ -57,22 +57,61 @@ struct Object *eval_list_items(struct Machine *machine, struct Object *inList)
 	return first;
 }
 
+struct Object *eval_closure(struct Machine *m, struct Object *closure,
+			struct Object *argVals)
+{
+	// Create new env, with parent captured when the closure was defined
+	struct Object * newEnv = create_env_object(m);
+	newEnv->env.parent = closure->closure.env;
+
+	// Populate the new environment with the args passed in
+	struct Object *argDefs = closure->closure.args;
+	while (!obj_is_nil(argDefs) && !obj_is_nil(argVals)) {
+		struct Object *key = car(argDefs);
+		struct Object *val = car(argVals);
+		env_update(&newEnv->env, key->symbol, val);
+		argDefs = cdr(argDefs);
+		argVals = cdr(argDefs);
+	}
+
+	// Push new env
+	struct Object * oldEnv = m->env;
+	m->env = newEnv;
+
+	struct Object *res = eval(m, closure->closure.body);
+
+	// Pop new env
+	m->env = oldEnv;
+
+	return res;
+}
+
 struct Object *eval_pair(struct Machine *machine, struct Object *obj)
 {
-	struct Object *nobj = 0;
 	if (obj->pair.car) {
 		struct Object *ecar = eval(machine, obj->pair.car);
-		if (ecar->type == TypeBuiltinForm) {
-			nobj = ecar->builtinForm.f(machine, obj->pair.cdr);
-		} else if (ecar->type == TypeBuiltinFunc) {
-			struct Object *eargs = eval_list_items(machine,
-							obj->pair.cdr);
-			nobj = ecar->builtinFunc.f(machine, eargs);
-		} else {
-			fprintf(stderr, "Function calls not implemented yet\n");
-			nobj = create_error_object(machine);
+		struct Object *eargs;
+		switch (ecar->type) {
+		case TypeBuiltinForm:
+			return ecar->builtinForm.f(machine, obj->pair.cdr);
+		case TypeBuiltinFunc:
+			eargs = eval_list_items(machine, obj->pair.cdr);
+			return ecar->builtinFunc.f(machine, eargs);
+		case TypeClosure:
+			eargs = eval_list_items(machine, obj->pair.cdr);
+			return eval_closure(machine, ecar, eargs);
+		case TypeSymbol:
+		case TypeString:
+		case TypeInteger:
+		case TypeDouble:
+		case TypePair:
+		case TypeEnv:
+		case TypeError:
+			fprintf(stderr, "The first element isn't something executable\n");
+			return create_error_object(machine);
 		}
 	}
-	return nobj;
+	fprintf(stderr, "eval_pair: car is null.\n");
+	return create_error_object(machine);
 }
 

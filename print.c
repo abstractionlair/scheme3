@@ -47,6 +47,9 @@ void obj_print_dotted(struct Machine *machine, struct Object *obj)
 		case TypeBuiltinFunc:
 			printf("*BUILTIN_FUNC*");
 			return;
+		case TypeClosure:
+			printf("*CLOSURE*");
+			return;
 		}
 	}
 }
@@ -114,6 +117,9 @@ void obj_print_inner(struct Machine *machine, struct Object *obj)
 			return;
 		case TypeBuiltinFunc:
 			printf("*BUILTIN_FUNC*");
+			return;
+		case TypeClosure:
+			printf("*CLOSURE*");
 			return;
 		}
 	}

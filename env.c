@@ -19,7 +19,7 @@ struct Object *env_get(struct Env *env, ptrdiff_t sym)
 			}
 		}
 		if (env->parent)
-			env = &env->parent->env;
+			env = &(env->parent->env);
 		else
 			env = 0;
 	}

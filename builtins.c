@@ -257,3 +257,9 @@ struct Object *divide(struct Machine *machine, struct Object *args)
 	return r;
 }
 
+struct Object *lambda(struct Machine *machine, struct Object *args)
+{
+	struct Object *largs = car(args);
+	struct Object *lbody = cadr(args);
+	return create_closure_object(machine, largs, lbody, machine->env);
+}

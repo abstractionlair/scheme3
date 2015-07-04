@@ -14,5 +14,6 @@ struct Object *sum(struct Machine *machine, struct Object *args);
 struct Object *prod(struct Machine *machine, struct Object *args);
 struct Object *subtract(struct Machine *machine, struct Object *args);
 struct Object *divide(struct Machine *machine, struct Object *args);
+struct Object *lambda(struct Machine *machine, struct Object *args);
 
 #endif
