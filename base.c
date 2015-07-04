@@ -1,5 +1,6 @@
 #include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 #include "base.h"
 
 struct String make_string(void)
@@ -122,3 +123,15 @@ void free_string_array_shallow(struct StringArray *stra)
 	stra->count = 0;
 	stra->size = 0;
 }
+
+char *strdup2(char *s1, char *s2)
+{
+	size_t l1 = strlen(s1);
+	size_t l2 = strlen(s2);
+	char *res = malloc(l1 + l2 + 1);
+	strcpy(res, s1);
+	strcpy(res + l1, s2);
+	res[l1 + l2] = '\0';
+	return res;
+}
+

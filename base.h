@@ -26,5 +26,6 @@ bool string_array_append(struct StringArray *strs, struct String nstr);
 void free_string_array(struct StringArray *stra);
 ptrdiff_t string_array_search(struct StringArray stra, struct String str);
 void free_string_array_shallow(struct StringArray *stra);
+char *strdup2(char *s1, char *s2);
 
 #endif
